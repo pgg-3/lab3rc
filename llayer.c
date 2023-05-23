@@ -24,8 +24,8 @@ struct termios oldtio;
 struct termios newtio;
 
 volatile int STOP=FALSE;
-int tr; int ns; 
-int countF=0;
+int ns; 
+int countF=0, countI=0;
 
 
 
@@ -35,7 +35,7 @@ int countF=0;
 
 int sendF(int fd, int transreceive, unsigned char m);
 unsigned char readF(int fd, int transreceive);
-int readI(int fd, char *buff, int ns);
+int readI(int fd, unsigned char *buff, int ns);
 int sendI(int fd, char *buff);
 
 int llwrite( char buff[], int fd, int tr){
@@ -49,12 +49,12 @@ int llwrite( char buff[], int fd, int tr){
 
     for (int i = 0; i < c2; i++)
     {
-        /*
-        b= sendI(fd, buff ,nsOld);
+        
+        b= sendI(fd, buff);
         if (b<0) 
         {
             printf("error2\n"); continue;
-        } */
+        } 
 
         r= readF(fd, tr); 
         
@@ -82,8 +82,8 @@ int llwrite( char buff[], int fd, int tr){
 
 int llread( char buff[] , int fd){
 
-    //int b = readI(fd, buff, ns);
-    int b=1;
+    int b = readI(fd, buff, ns);
+    
 
 
     if (b<0)
@@ -112,7 +112,7 @@ int llread( char buff[] , int fd){
 
 
 int llclose(int fd, char port[], int tr){
-    int c1=0, c2=4; unsigned char d;
+    int c1=0, c2=6; unsigned char d;
     if (tr == 1)
     {
         while (c2>c1)
@@ -150,8 +150,8 @@ int llclose(int fd, char port[], int tr){
 
 }
 
-int llopen(char port[], int tr2){ 
-    int c1=0, c2=4; //ntransm
+int llopen(int fd, char port[], int tr2){ printf("llopen start - %d\n", tr2);
+    int c1=0, c2=6; //ntransm
     if( tr2!=1) 
     {
         if(tr2!=2) printf("error -> tr"); }
@@ -159,14 +159,14 @@ int llopen(char port[], int tr2){
     int tr=tr2;
     char buff[255]; int res;
 
-    int fd=open( port , O_RDWR | O_NOCTTY);
+    fd = open( port , O_RDWR | O_NOCTTY);
     if(fd<0){ printf("error");  return -1;}
 
     struct termios oldtio;
     struct termios newtio; 
 
     if ( tcgetattr(fd,&oldtio) == -1) { 
-        perror("tcgetattr");
+        printf("tcgetattr");
         exit(-1);
     }
     bzero(&newtio, sizeof(newtio));
@@ -176,29 +176,22 @@ int llopen(char port[], int tr2){
     newtio.c_lflag = 0;
 
 
-    if(tr==1) //trans
-    {
+   
         newtio.c_cc[VTIME]=0;   newtio.c_cc[VMIN]=5;
-    }
-    else if(tr==2) //receive
-    {
-        newtio.c_cc[VTIME]=0;   newtio.c_cc[VMIN]=5;
-    }
-    else{
-        newtio.c_cc[VTIME]=0;   newtio.c_cc[VMIN]=5;
-    }
+    
     
 
 
     tcflush(fd, TCIOFLUSH);
 
     if (tcsetattr(fd,TCSANOW,&newtio) == -1) {
-        perror("tcsetattr");
+        printf("tcsetattr");
         exit(-1);
     }
 
     //new
-
+    //if(tr==1) {printf("Start typing: \n"); gets(buff); printf("stop\n");}
+    buff[0]='h';
     ns=1;
 
     if(tr==1) //t
@@ -210,15 +203,15 @@ int llopen(char port[], int tr2){
             {
                 return 1;
             }
-            
+            c1++;
         } 
-        return -9;
+        printf("error9"); return -9;
     }
     else if(tr==2) //r
     {
         while (readF(fd,1)!=CTRL_SET)
         {
-            
+
         }
         sendF(fd, 1, CTRL_UA);
         
@@ -301,7 +294,7 @@ int sendF(int fd, int transreceive, unsigned char m){
     if(transreceive==1) add=0x03;
     else if(transreceive==2) add=0x01;
     else return -1;
-
+    
     unsigned char bcc; bcc = (add^m);
 
     f[0]=FLAG;
@@ -313,11 +306,205 @@ int sendF(int fd, int transreceive, unsigned char m){
     countF++; return write(fd,f,5);
 }
 
-int readI(int fd, char *buff, int ns){
+int readI(int fd, unsigned char *buff, int ns){
+    int Start =0, flagRcv = 1, aRvc=2, cRvc=3, bccOk=4, end=5 , bcc2Ok=6;
+    int st = Start; int b;
+
+    int oldS=6;
+    unsigned char *ar; ar = malloc(oldS * sizeof(unsigned char));
+    int arC=0;
+    while (st!= end)
+    {
+        b = read(fd,&buff,1);
+        if (b<1)
+        {
+            free(ar);
+            return -1;
+        }
+        
+        ar[arC++]=buff;
+
+        switch (st)
+        {
+        case 0: //Start
+            if (buff == FLAG)
+            {
+                st = flagRcv;
+            }
+            break;
+        case 1: //flag
+            if (buff==FLAG)
+            {
+                st = end;
+            }
+            break;
+        
+        default:
+            break;
+        }
+    }
+
+
+    unsigned char b1; int ff=0,  newS;
+    for (int f = 1; f < arC-1; f++)
+    {
+        b1=ar[f];
+        if (b1 == 0x7D)
+        {
+            for (int m = f; m < arC; m++)
+            {
+                ar[m]=ar[m+1];
+            }
+            ar[f] = ar[f]^(0x20);
+
+            oldS--;
+            ar = realloc(ar,oldS*sizeof(unsigned char));
+            arC--;
+        
+            ff++;
+            //unfin
+        }
+
+        
+    }
+    
+    unsigned char bcc2;
+    for (int j = 4; j < arC-2 ; j++) bcc2= bcc2 ^ ar[j];
+    
+    
+    st = Start;
+    int i=0; int add = 0x01;
+    int nsN = ns ? 0 : 1;
+    unsigned char ctr1 = SEQNUM_TO_CONTROL(ns)  ,  ctr2 = SEQNUM_TO_CONTROL(nsN);
+    
+    while (st!=end )
+    {
+        switch (st)
+        {
+        case 0: //Start
+            if (ar[i]==FLAG)
+            {
+                st = flagRcv;
+            } else return -3;
+            break;
+        case 1: //flag
+            if (ar[i]==add)
+            {
+                st = aRvc;
+            }
+            else return -3;
+
+            break;
+
+
+        case 2: //arvc
+            if(ar[i]==ctr1)  st=cRvc;
+            else if (ar[i]==ctr2) return -4;
+            else return -2;
+          
+            
+            break;
+        
+        case 3: //crvc
+            if(ar[i]==(add ^ ctr1)) st=bccOk;
+            else if (ar[i]==ctr2) return -4;
+            else return -2;
+            
+            break;
+
+        case 4: //bcc
+            if(i==arC-2)
+            {
+                if (ar[i]=bcc2)
+                {
+                    st=bcc2Ok;
+                }
+                else return -2;
+                
+            }
+            
+            break;
+        case 6: //bcc 2
+            if(ar[i]=FLAG)
+            {
+                st=end;
+    
+            }
+            else return -4;
+            break;
+        default:
+            break;
+        }
+
+        i++;
+    }
+
+    int k=0;
+    unsigned char *ar1; ar1 = malloc((arC +1) * sizeof(unsigned char));
+    for (i = 4; i < arC-2; i++)
+    {
+        ar1[k]=ar[i];  
+        k++;
+    }
+    free(ar);
+    return k;
+    
 
 }
 
 int sendI(int fd, char *buff)
 {
+    int lenght = 4, oldS=6;
+
+    unsigned char ctrl = SEQNUM_TO_CONTROL(ns);
+    unsigned char bcc=0x03^ctrl;
+    unsigned char bcc2=0;
+
+    unsigned char *ar1; ar1 = malloc(oldS * sizeof(unsigned char));
+    int ar1C=0;
+
+    ar1[ar1C]=FLAG; ar1C++;
+    ar1[ar1C]=0x03; ar1C++;
+    ar1[ar1C]=ctrl; ar1C++;
+    ar1[ar1C]=bcc; ar1C++;
+
+    for (int i = 0; i < lenght; i++)
+    {
+        ar1[ar1C]=buff[i]; ar1C++;
+        bcc2 = bcc2^buff[i];
+    }
+    
+    ar1[ar1C]=bcc2; ar1C++;
+
+    unsigned char b1; int bb=0;
+    for (int f = 1; f < ar1C; f++)
+    {
+        b1=ar1[f];
+        if (b1 == 0x7D || b1 == FLAG)
+        {
+            oldS++;
+            ar1 = realloc(ar1,oldS*sizeof(unsigned char));
+            ar1C++;
+
+
+            for (int i1  = ar1C; i1 > f+1; i1--)
+            {
+                ar1[i1] = ar1[i1-1];
+            }
+            
+            ar1[f]=0x7D; ar1[f+1]=b1 ^ 0x20;
+
+        
+            bb++;
+            //unfi
+        }
+    }
+    
+
+    ar1[ar1C]=FLAG; ar1C++;
+
+    int r=write(fd,ar1,ar1C); 
+    countI++;
+    return r;
 
 }

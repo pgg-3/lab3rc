@@ -8,6 +8,7 @@
 #define CTRL_RR(n) ((n << 7) | 0x05)
 #define CTRL_REJ(n) ((n << 7) | 0x01)
 
+#define SEQNUM_TO_CONTROL(n) ((1 & n) << 6)
 
 #define FLAG 0x5C
 
@@ -15,4 +16,4 @@
 int llwrite( char buff[], int fd, int tr);
 int llread( char buff[], int fd);
 int llclose(int fd, char port[], int tr);
-int llopen(char port[], int tr);
+int llopen(int fd, char port[], int tr2);
