@@ -90,11 +90,11 @@ int llread( char buff[] , int fd){
     {
         switch (b)
         {
-        case -3:
+        case -6:
             sendF(fd, 1, CTRL_RR(ns));
             break;
 
-        case -4:
+        case -5:
             sendF(fd, 1, CTRL_REJ(ns));
             break;
         
@@ -150,13 +150,14 @@ int llclose(int fd, char port[], int tr){
 
 }
 
-int llopen(int fd, char port[], int tr2){ printf("llopen start - %d\n", tr2);
-    int c1=0, c2=6; //ntransm
-    if( tr2!=1) 
+int llopen(int fd, char port[], int tr){ printf("llopen start - %d\n", tr);
+    int c1=0, c2=6; //ntransm 
+    int count=0;
+    if( tr!=1) 
     {
-        if(tr2!=2) printf("error -> tr"); }
+        if(tr!=2) printf("error -> tr"); }
 
-    int tr=tr2;
+    
     char buff[255]; int res;
 
     fd = open( port , O_RDWR | O_NOCTTY);
@@ -178,7 +179,7 @@ int llopen(int fd, char port[], int tr2){ printf("llopen start - %d\n", tr2);
 
    
         newtio.c_cc[VTIME]=0;   newtio.c_cc[VMIN]=5;
-    
+        //newtio.c_cc[VTIME]=1;   newtio.c_cc[VMIN]=0;
     
 
 
@@ -191,9 +192,12 @@ int llopen(int fd, char port[], int tr2){ printf("llopen start - %d\n", tr2);
 
     //new
     //if(tr==1) {printf("Start typing: \n"); gets(buff); printf("stop\n");}
-    buff[0]='h';
-    ns=1;
+    for (int i = 0; i < 255; i++) {
+        buff[i] = 'a';
+    }
 
+    ns=1;
+    // printf("\n here \n");
     if(tr==1) //t
     {
         while (c2>c1)
@@ -201,6 +205,7 @@ int llopen(int fd, char port[], int tr2){ printf("llopen start - %d\n", tr2);
             sendF(fd,2,CTRL_SET);
             if (readF(fd,1)==CTRL_UA)
             {
+                printf("readF return 1");
                 return 1;
             }
             c1++;
@@ -211,7 +216,8 @@ int llopen(int fd, char port[], int tr2){ printf("llopen start - %d\n", tr2);
     {
         while (readF(fd,1)!=CTRL_SET)
         {
-
+            
+            printf("tr=2 readF count->%d", count); count++;
         }
         sendF(fd, 1, CTRL_UA);
         
@@ -226,31 +232,39 @@ int llopen(int fd, char port[], int tr2){ printf("llopen start - %d\n", tr2);
 
 
 unsigned char readF(int fd, int transreceive)
-{
-    int Start =0, flagRcv = 1, aRvc=2, cRvc=3, bccOk=4, end=5;
+{   printf("readF starts\n");
+    int Start = 0, flagRcv = 1, aRvc=2, cRvc=3, bccOk=4, end=5;
 
-    int st = Start; unsigned char buff;
-    unsigned char add, ctrl=0; int b;
+    int st; unsigned char buff;
+    unsigned char add, ctrl; int b;
 
     if(transreceive==1) add=0x03;
     else if(transreceive==2) add=0x01;
     else return -1;
-    
+    st=0;
     while (st != end)
     {
+        printf("\nhere1\n");
         b = read(fd, &buff, 1);
-        if(b < 1) {
+        if(b==0)
+        {
+            printf("b==0\n");
+        }
+        if(b < 0) {
+            printf("\nhere\n");
             return 0;
         }
         switch (st)
         {
         case 0: //Start
-            if (buff== FLAG)
-            {
-                st = flagRcv;
-            }
-            break;
+                printf("case start\n");
+                if (buff == FLAG)
+                {
+                    st = flagRcv;
+                }
+                break;
         case 1: //flag
+            printf("case flag\n");
             if (buff==add)
             {
                 st = aRvc;
@@ -262,7 +276,7 @@ unsigned char readF(int fd, int transreceive)
 
 
         case 2: //arvc
-            if(buff==FLAG)  st=flagRcv;
+            if(buff == FLAG)  st=flagRcv;
             else{ st=cRvc;  ctrl=buff;  }
             break;
         
@@ -288,7 +302,7 @@ unsigned char readF(int fd, int transreceive)
     return ctrl;
 }
 
-int sendF(int fd, int transreceive, unsigned char m){
+int sendF(int fd, int transreceive, unsigned char m){ printf("sendF starts\n");
     unsigned char f[5], add;
 
     if(transreceive==1) add=0x03;
@@ -316,7 +330,12 @@ int readI(int fd, unsigned char *buff, int ns){
     while (st!= end)
     {
         b = read(fd,&buff,1);
-        if (b<1)
+        if(b==0)
+        {
+            printf("readI -> read function returned 0\n");
+            continue;
+        }
+        else if (b<0)
         {
             free(ar);
             return -1;
@@ -399,7 +418,7 @@ int readI(int fd, unsigned char *buff, int ns){
 
         case 2: //arvc
             if(ar[i]==ctr1)  st=cRvc;
-            else if (ar[i]==ctr2) return -4;
+            else if (ar[i]==ctr2) return -6;
             else return -2;
           
             
@@ -407,7 +426,7 @@ int readI(int fd, unsigned char *buff, int ns){
         
         case 3: //crvc
             if(ar[i]==(add ^ ctr1)) st=bccOk;
-            else if (ar[i]==ctr2) return -4;
+            else if (ar[i]==ctr2) return -6;
             else return -2;
             
             break;
@@ -419,7 +438,7 @@ int readI(int fd, unsigned char *buff, int ns){
                 {
                     st=bcc2Ok;
                 }
-                else return -2;
+                else return -5;
                 
             }
             
@@ -448,7 +467,6 @@ int readI(int fd, unsigned char *buff, int ns){
     }
     free(ar);
     return k;
-    
 
 }
 

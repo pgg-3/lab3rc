@@ -16,4 +16,4 @@
 int llwrite( char buff[], int fd, int tr);
 int llread( char buff[], int fd);
 int llclose(int fd, char port[], int tr);
-int llopen(int fd, char port[], int tr2);
+int llopen(int fd, char port[], int tr);
